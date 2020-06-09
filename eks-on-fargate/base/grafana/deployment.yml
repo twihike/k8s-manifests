@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: tk-system
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:7.0.3
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: grafana-config
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 10
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 10
+            successThreshold: 1
+          resources:
+            limits:
+              cpu: 30m
+              memory: 100Mi
+            requests:
+              cpu: 30m
+              memory: 100Mi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+            - name: config-volume
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+              subPath: datasources.yaml
+            - name: config-volume
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+            - name: dashboards-volume
+              mountPath: /tmp/dashboards
+            - name: storage-volume
+              mountPath: /var/lib/grafana
+        - name: node-exporter
+          image: prom/node-exporter:v0.18.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9100
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          resources:
+            limits:
+              cpu: 30m
+              memory: 30Mi
+            requests:
+              cpu: 30m
+              memory: 30Mi
+      volumes:
+        - name: config-volume
+          configMap:
+            name: grafana-config
+        - name: dashboards-volume
+          configMap:
+            name: grafana-dashboards
+        - name: storage-volume
+          emptyDir: {}

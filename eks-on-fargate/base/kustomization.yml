@@ -1,0 +1,59 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - fluent-bit/configmap.yml
+  - fluentd/configmap.yml
+  - fluentd/deployment.yml
+  - fluentd/service.yml
+  - grafana/configmap.yml
+  - grafana/deployment.yml
+  - grafana/service.yml
+  - loki/configmap.yml
+  - loki/deployment.yml
+  - loki/service.yml
+  - prometheus/clusterrole.yml
+  - prometheus/clusterrolebinding.yml
+  - prometheus/serviceaccount.yml
+  - prometheus/configmap.yml
+  - prometheus/deployment.yml
+  - prometheus/service.yml
+  - traefik/crd.yml
+  - traefik/clusterrole.yml
+  - traefik/clusterrolebinding.yml
+  - traefik/serviceaccount.yml
+  - traefik/deployment.yml
+  - traefik/service.yml
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: fluent-bit-config
+    namespace: tk-system
+    behavior: merge
+    envs:
+      - fluent-bit/configmap.env.example
+  - name: fluentd-config
+    namespace: tk-system
+    behavior: merge
+    envs:
+      - fluentd/configmap.env.example
+  - name: grafana-config
+    namespace: tk-system
+    behavior: merge
+    envs:
+      - grafana/configmap.env.example
+  - name: loki-config
+    namespace: tk-system
+    behavior: merge
+    envs:
+      - loki/configmap.env.example
+  - name: prometheus-config
+    namespace: tk-system
+    behavior: merge
+    envs:
+      - prometheus/configmap.env.example
+secretGenerator:
+  - name: aws-secret
+    namespace: tk-system
+    envs:
+      - aws/secret.env.example

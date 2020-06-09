@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: tk-system
+  name: loki
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      initContainers:
+        - name: init-config
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              sed \
+                -e "s/LOKI_S3_BUCKET_REGION/${S3_BUCKET_REGION}/g" \
+                -e "s/LOKI_S3_BUCKET_NAME/${S3_BUCKET_NAME}/g" \
+                /loki/loki.yaml \
+                > /etc/loki/loki.yaml
+          envFrom:
+            - configMapRef:
+                name: loki-config
+          volumeMounts:
+            - name: config-volume-orig
+              mountPath: /loki
+            - name: config-volume
+              mountPath: /etc/loki
+      containers:
+        - name: loki
+          image: grafana/loki:1.5.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config.file=/etc/loki/loki.yaml
+          envFrom:
+            - secretRef:
+                name: aws-secret
+          ports:
+            - containerPort: 3100
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3100
+            initialDelaySeconds: 45
+            timeoutSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3100
+            initialDelaySeconds: 45
+            timeoutSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/loki
+            - name: storage-volume
+              mountPath: /data
+        - name: node-exporter
+          image: prom/node-exporter:v0.18.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9100
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          resources:
+            limits:
+              cpu: 30m
+              memory: 30Mi
+            requests:
+              cpu: 30m
+              memory: 30Mi
+      volumes:
+        - name: config-volume-orig
+          configMap:
+            name: loki-config
+        - name: config-volume
+          emptyDir: {}
+        - name: storage-volume
+          emptyDir: {}

@@ -1,0 +1,48 @@
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  namespace: xx-system
+  name: ipwhitelist
+spec:
+  ipWhiteList:
+    sourceRange:
+      - 0.0.0.0/0
+    ipStrategy:
+      depth: 1
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  namespace: xx-system
+  name: grafana
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`grafana.example.com`) && PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: grafana
+          port: 3000
+      middlewares:
+        - name: ipwhitelist
+          namespace: xx-system
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  namespace: xx-system
+  name: prometheus
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`prometheus.example.com`) && PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: prometheus
+          port: 9090
+      middlewares:
+        - name: ipwhitelist
+          namespace: xx-system

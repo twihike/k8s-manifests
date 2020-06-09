@@ -1,0 +1,146 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: tk-system
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      initContainers:
+        - name: restore
+          image: amazon/aws-cli
+          command:
+            - sh
+            - -c
+            - |
+              if aws s3 ls "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}snapshots.tar.gz" > /dev/null; then
+                yum install -y tar gzip
+                aws s3 cp "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}snapshots.tar.gz" /tmp
+                cd /data
+                tar zxvf /tmp/snapshots.tar.gz
+              fi
+          envFrom:
+            - secretRef:
+                name: aws-secret
+            - configMapRef:
+                name: prometheus-config
+          volumeMounts:
+            - name: storage-volume
+              mountPath: /data
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.18.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/config/prometheus.yml
+            - --web.enable-admin-api
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --storage.tsdb.path=/data
+            - --storage.tsdb.retention.time=15d
+          ports:
+            - containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            limits:
+              cpu: 200m
+              memory: 300Mi
+            requests:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+            - name: storage-volume
+              mountPath: /data
+        - name: backup
+          image: amazon/aws-cli
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              URL=http://localhost:9090/api/v1/admin/tsdb/snapshot
+              yum install -y tar gzip jq
+              while true; do
+                sleep 3600
+                NAME=$(curl -XPOST "${URL}" | jq -r '.data.name')
+                (
+                  cd "/data/snapshots/${NAME}"
+                  tar zcvf /tmp/snapshots.tar.gz .
+                )
+                NOW=$(date +%Y-%m%d-%H%M%S)
+                aws s3 cp /tmp/snapshots.tar.gz "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}${NOW}.tar.gz"
+                aws s3 cp /tmp/snapshots.tar.gz "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}"
+              done
+          envFrom:
+            - secretRef:
+                name: aws-secret
+            - configMapRef:
+                name: prometheus-config
+          resources:
+            limits:
+              cpu: 10m
+              memory: 100Mi
+            requests:
+              cpu: 10m
+              memory: 100Mi
+          volumeMounts:
+            - name: storage-volume
+              mountPath: /data
+        - name: node-exporter
+          image: prom/node-exporter:v0.18.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9100
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9100
+          resources:
+            limits:
+              cpu: 30m
+              memory: 30Mi
+            requests:
+              cpu: 30m
+              memory: 30Mi
+      terminationGracePeriodSeconds: 300
+      volumes:
+        - name: config-volume
+          configMap:
+            name: prometheus-config
+        - name: storage-volume
+          emptyDir: {}

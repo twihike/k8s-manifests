@@ -1,0 +1,71 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: tk-system
+  name: fluent-bit-config
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush           5
+        Daemon          off
+        Log_Level       info
+
+    [INPUT]
+        Name          tail
+        Tag           logs.${K8S_NAMESPACE}-${K8S_POD_NAME}
+        Path          /var/log/container/*
+        Mem_Buf_Limit 5m
+
+    [INPUT]
+        Name         cpu
+        Tag          metrics.cpu.${K8S_NAMESPACE}-${K8S_POD_NAME}
+        Interval_Sec 1
+
+    [INPUT]
+        Name          disk
+        Tag           metrics.disk.${K8S_NAMESPACE}-${K8S_POD_NAME}
+        Interval_Sec  1
+        Interval_NSec 0
+
+    [INPUT]
+        Name   mem
+        Tag    metrics.memory.${K8S_NAMESPACE}-${K8S_POD_NAME}
+
+    [INPUT]
+        Name          netif
+        Tag           metrics.netif.${K8S_NAMESPACE}-${K8S_POD_NAME}
+        Interval_Sec  1
+        Interval_NSec 0
+        Interface     eth0
+
+    # [FILTER]
+    #     Name    lua
+    #     Match   *
+    #     script  append_tag.lua
+    #     call    append_tag
+
+    # [OUTPUT]
+    #     Name loki
+    #     Match *
+    #     Url ${LOKI_URL}
+    #     BatchWait 1
+    #     BatchSize 30720
+    #     LabelKeys tag
+
+    [OUTPUT]
+        Name          forward
+        Match         *
+        Host          ${FORWARD_HOST}
+        Port          24224
+
+    [OUTPUT]
+        Name  stdout
+        Match *
+
+  append_tag.lua: |
+    function append_tag(tag, timestamp, record)
+      new_record = record
+      new_record["tag"] = tag
+      return 1, timestamp, new_record
+    end

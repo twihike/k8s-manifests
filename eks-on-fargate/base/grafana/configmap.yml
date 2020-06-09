@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: tk-system
+  name: grafana-config
+data:
+  grafana.ini: |
+    [paths]
+    data = /var/lib/grafana/data
+    logs = /var/log/grafana
+    plugins = /var/lib/grafana/plugins
+    provisioning = /etc/grafana/provisioning
+    [analytics]
+    reporting_enabled = false
+    check_for_updates = true
+    [log]
+    mode = console
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: ${PROMETHEUS_URL}
+      - name: Loki
+        type: loki
+        access: proxy
+        url: ${LOKI_URL}
+        jsonData:
+          maxLines: 1000
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: node
+        orgId: 1
+        folder: /k8s
+        type: file
+        disableDeletion: false
+        editable: true
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /tmp/dashboards
