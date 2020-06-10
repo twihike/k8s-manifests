@@ -46,7 +46,7 @@ data:
           aws_sec_key "#{ENV['AWS_SECRET_ACCESS_KEY']}"
           s3_bucket "#{ENV['S3_BUCKET_NAME']}"
           s3_region "#{ENV['S3_BUCKET_REGION']}"
-          s3_object_key_format "#{ENV['S3_OBJECT_KEY_PREFIX']}/%Y/%m/%d/${tag}-%H-%M-%S-%{index}.%{file_extension}"
+          s3_object_key_format "#{ENV['S3_OBJECT_KEY_PREFIX']}%Y/%m/%d/${tag}-%H-%M-%S-%{index}.%{file_extension}"
           <buffer tag,time>
             @type file
             path /fluentd/log/buffers/s3
