@@ -21,16 +21,15 @@ spec:
       serviceAccountName: prometheus
       initContainers:
         - name: restore
-          image: amazon/aws-cli
+          image: public.ecr.aws/bitnami/aws-cli:2
           command:
             - sh
             - -c
             - |
               if aws s3 ls "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}snapshots.tar.gz" > /dev/null; then
-                yum install -y tar gzip
                 aws s3 cp "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}snapshots.tar.gz" /tmp
                 cd /data
-                tar zxvf /tmp/snapshots.tar.gz
+                tar zxf /tmp/snapshots.tar.gz
               fi
           envFrom:
             - secretRef:
@@ -42,11 +41,12 @@ spec:
               mountPath: /data
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.18.1
+          image: quay.io/prometheus/prometheus:v2.29.2
           imagePullPolicy: IfNotPresent
           args:
             - --config.file=/etc/config/prometheus.yml
             - --web.enable-admin-api
+            - --web.enable-lifecycle
             - --web.console.templates=/etc/prometheus/consoles
             - --web.console.libraries=/etc/prometheus/console_libraries
             - --storage.tsdb.path=/data
@@ -58,48 +58,51 @@ spec:
               path: /-/ready
               port: 9090
             initialDelaySeconds: 30
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
+            periodSeconds: 5
+            timeoutSeconds: 4
           livenessProbe:
             httpGet:
               path: /-/healthy
               port: 9090
             initialDelaySeconds: 30
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
+            periodSeconds: 15
+            timeoutSeconds: 10
           resources:
             limits:
               cpu: 200m
-              memory: 700Mi
+              memory: 600Mi
             requests:
               cpu: 200m
-              memory: 200Mi
+              memory: 600Mi
           volumeMounts:
             - name: config-volume
               mountPath: /etc/config
+            - name: rules-volume
+              mountPath: /etc/rules
             - name: storage-volume
               mountPath: /data
         - name: backup
-          image: amazon/aws-cli
+          image: public.ecr.aws/bitnami/aws-cli:2
           imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
             - |
               URL=http://localhost:9090/api/v1/admin/tsdb/snapshot
-              yum install -y tar gzip jq
+              cd /tmp
+              curl -o jq -L https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+              chmod +x jq
               while true; do
                 sleep 3600
-                NAME=$(curl -XPOST "${URL}" | jq -r '.data.name')
+                NAME=$(curl -XPOST "${URL}" | ./jq -r '.data.name')
                 (
                   cd "/data/snapshots/${NAME}"
-                  tar zcvf /tmp/snapshots.tar.gz .
+                  tar zcf /tmp/snapshots.tar.gz ./*
                 )
                 NOW=$(date +%Y-%m%d-%H%M%S)
                 aws s3 cp /tmp/snapshots.tar.gz "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}${NOW}.tar.gz"
                 aws s3 cp /tmp/snapshots.tar.gz "s3://${S3_BUCKET_NAME}/${S3_OBJECT_KEY_PREFIX}"
+                rm -rf "/data/snapshots/${NAME}"
               done
           envFrom:
             - secretRef:
@@ -108,39 +111,47 @@ spec:
                 name: prometheus-config
           resources:
             limits:
-              cpu: 10m
+              cpu: 40m
               memory: 100Mi
             requests:
-              cpu: 10m
+              cpu: 40m
               memory: 100Mi
           volumeMounts:
             - name: storage-volume
               mountPath: /data
-        - name: node-exporter
-          image: prom/node-exporter:v0.18.1
+        - name: configmap-reload
+          image: jimmidyson/configmap-reload:v0.5.0
           imagePullPolicy: IfNotPresent
-          ports:
-            - name: metrics
-              containerPort: 9100
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 9100
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 9100
+          args:
+            - --volume-dir=/etc/config
+            - --volume-dir=/etc/rules
+            - --webhook-url=http://127.0.0.1:9090/-/reload
           resources:
             limits:
-              cpu: 30m
+              cpu: 10m
               memory: 30Mi
             requests:
-              cpu: 30m
+              cpu: 10m
               memory: 30Mi
-      terminationGracePeriodSeconds: 300
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+              readOnly: true
+            - name: rules-volume
+              mountPath: /etc/rules
+              readOnly: true
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
       volumes:
         - name: config-volume
           configMap:
             name: prometheus-config
+        - name: rules-volume
+          configMap:
+            name: prometheus-rules
         - name: storage-volume
           emptyDir: {}

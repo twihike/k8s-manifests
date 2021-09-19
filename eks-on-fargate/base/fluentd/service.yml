@@ -5,9 +5,9 @@
     namespace: tk-system
     name: fluentd
   spec:
+    selector:
+      app: fluentd
     ports:
       - protocol: TCP
         name: forward
         port: 24224
-    selector:
-      app: fluentd

@@ -17,34 +17,20 @@ spec:
     metadata:
       labels:
         app: loki
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3100"
     spec:
-      initContainers:
-        - name: init-config
-          image: busybox
-          command:
-            - sh
-            - -c
-            - |
-              sed \
-                -e "s/LOKI_S3_BUCKET_REGION/${S3_BUCKET_REGION}/g" \
-                -e "s/LOKI_S3_BUCKET_NAME/${S3_BUCKET_NAME}/g" \
-                /loki/loki.yaml \
-                > /etc/loki/loki.yaml
-          envFrom:
-            - configMapRef:
-                name: loki-config
-          volumeMounts:
-            - name: config-volume-orig
-              mountPath: /loki
-            - name: config-volume
-              mountPath: /etc/loki
       containers:
         - name: loki
-          image: grafana/loki:1.5.0
+          image: grafana/loki:2.3.0
           imagePullPolicy: IfNotPresent
           args:
             - -config.file=/etc/loki/loki.yaml
+            - -config.expand-env=true
           envFrom:
+            - configMapRef:
+                name: loki-config
             - secretRef:
                 name: aws-secret
           ports:
@@ -54,17 +40,13 @@ spec:
               path: /ready
               port: 3100
             initialDelaySeconds: 45
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
+            timeoutSeconds: 9
           livenessProbe:
             httpGet:
               path: /ready
               port: 3100
             initialDelaySeconds: 45
-            timeoutSeconds: 30
-            failureThreshold: 3
-            successThreshold: 1
+            timeoutSeconds: 9
           resources:
             limits:
               cpu: 100m
@@ -72,37 +54,21 @@ spec:
             requests:
               cpu: 100m
               memory: 100Mi
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: config-volume
               mountPath: /etc/loki
-            - name: storage-volume
+            - name: data-volume
               mountPath: /data
-        - name: node-exporter
-          image: prom/node-exporter:v0.18.1
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: metrics
-              containerPort: 9100
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 9100
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 9100
-          resources:
-            limits:
-              cpu: 30m
-              memory: 30Mi
-            requests:
-              cpu: 30m
-              memory: 30Mi
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
       volumes:
-        - name: config-volume-orig
+        - name: config-volume
           configMap:
             name: loki-config
-        - name: config-volume
-          emptyDir: {}
-        - name: storage-volume
+        - name: data-volume
           emptyDir: {}

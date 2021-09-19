@@ -5,9 +5,9 @@ metadata:
   namespace: tk-system
   name: loki
 spec:
+  selector:
+    app: loki
   ports:
     - name: http-metrics
       protocol: TCP
       port: 3100
-  selector:
-    app: loki

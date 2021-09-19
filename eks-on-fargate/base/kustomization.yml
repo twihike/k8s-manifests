@@ -18,6 +18,9 @@ resources:
   - prometheus/configmap.yml
   - prometheus/deployment.yml
   - prometheus/service.yml
+  - prometheus-alertmanager/configmap.yml
+  - prometheus-alertmanager/deployment.yml
+  - prometheus-alertmanager/service.yml
   - traefik/crd.yml
   - traefik/clusterrole.yml
   - traefik/clusterrolebinding.yml

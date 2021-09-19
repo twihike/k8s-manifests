@@ -7,37 +7,43 @@ metadata:
 data:
   fluent-bit.conf: |
     [SERVICE]
-        Flush           5
-        Daemon          off
-        Log_Level       info
+        Flush          1
+        Daemon         off
+        Log_Level      info
+        Parsers_File   parsers.conf
+        HTTP_Server    On
+        HTTP_Listen    0.0.0.0
+        HTTP_Port      2020
 
     [INPUT]
-        Name          tail
-        Tag           logs.${K8S_NAMESPACE}-${K8S_POD_NAME}
-        Path          /var/log/container/*
-        Mem_Buf_Limit 5m
+        Name             tail
+        Tag              logs.${K8S_NAMESPACE}.${K8S_POD_NAME}
+        Path             /var/log/container/*
+        Mem_Buf_Limit    5m
+        Skip_Long_Lines  On
+        Refresh_Interval 10
 
-    [INPUT]
-        Name         cpu
-        Tag          metrics.cpu.${K8S_NAMESPACE}-${K8S_POD_NAME}
-        Interval_Sec 1
+    # [INPUT]
+    #     Name         cpu
+    #     Tag          metrics.cpu.${K8S_NAMESPACE}.${K8S_POD_NAME}
+    #     Interval_Sec 1
 
-    [INPUT]
-        Name          disk
-        Tag           metrics.disk.${K8S_NAMESPACE}-${K8S_POD_NAME}
-        Interval_Sec  1
-        Interval_NSec 0
+    # [INPUT]
+    #     Name          disk
+    #     Tag           metrics.disk.${K8S_NAMESPACE}.${K8S_POD_NAME}
+    #     Interval_Sec  1
+    #     Interval_NSec 0
 
-    [INPUT]
-        Name   mem
-        Tag    metrics.memory.${K8S_NAMESPACE}-${K8S_POD_NAME}
+    # [INPUT]
+    #     Name   mem
+    #     Tag    metrics.memory.${K8S_NAMESPACE}.${K8S_POD_NAME}
 
-    [INPUT]
-        Name          netif
-        Tag           metrics.netif.${K8S_NAMESPACE}-${K8S_POD_NAME}
-        Interval_Sec  1
-        Interval_NSec 0
-        Interface     eth0
+    # [INPUT]
+    #     Name          netif
+    #     Tag           metrics.netif.${K8S_NAMESPACE}.${K8S_POD_NAME}
+    #     Interval_Sec  1
+    #     Interval_NSec 0
+    #     Interface     eth0
 
     # [FILTER]
     #     Name    lua
@@ -45,23 +51,34 @@ data:
     #     script  append_tag.lua
     #     call    append_tag
 
+    [OUTPUT]
+        name                   loki
+        match                  *
+        host                   ${LOKI_HOST}
+        port                   3100
+        labels                 job=fluentbit, namespace=${K8S_NAMESPACE}, instance=${K8S_POD_NAME}, tag=$TAG
+        # auto_kubernetes_labels on
+
+    [OUTPUT]
+        Name                         s3
+        Match                        *
+        region                       ${S3_BUCKET_REGION}
+        bucket                       ${S3_BUCKET_NAME}
+        total_file_size              10M
+        upload_timeout               1m
+        use_put_object               On
+        s3_key_format                /${S3_OBJECT_KEY_PREFIX}%Y/%m/%d/$TAG[0]/$TAG[1]/$TAG[2]/%H-%M-%S-$UUID.gz
+        # s3_key_format_tag_delimiters .-
+
     # [OUTPUT]
-    #     Name loki
+    #     Name          forward
+    #     Match         *
+    #     Host          ${FORWARD_HOST}
+    #     Port          24224
+
+    # [OUTPUT]
+    #     Name  stdout
     #     Match *
-    #     Url ${LOKI_URL}
-    #     BatchWait 1
-    #     BatchSize 30720
-    #     LabelKeys tag
-
-    [OUTPUT]
-        Name          forward
-        Match         *
-        Host          ${FORWARD_HOST}
-        Port          24224
-
-    [OUTPUT]
-        Name  stdout
-        Match *
 
   append_tag.lua: |
     function append_tag(tag, timestamp, record)

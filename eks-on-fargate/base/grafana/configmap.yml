@@ -32,13 +32,39 @@ data:
   dashboards.yaml: |
     apiVersion: 1
     providers:
+      - name: prometheus
+        orgId: 1
+        folder: /prometheus
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /tmp/dashboards-prometheus
       - name: node
+        orgId: 1
+        folder: /node
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /tmp/dashboards-node
+      - name: k8s
         orgId: 1
         folder: /k8s
         type: file
         disableDeletion: false
-        editable: true
         updateIntervalSeconds: 10
         allowUiUpdates: false
         options:
-          path: /tmp/dashboards
+          path: /tmp/dashboards-k8s
+      - name: loki
+        orgId: 1
+        folder: /loki
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: false
+        options:
+          path: /tmp/dashboards-loki

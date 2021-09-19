@@ -24,21 +24,24 @@ spec:
       serviceAccountName: traefik-ingress-controller
       containers:
         - name: traefik
-          image: traefik:v2.2
+          image: traefik:2.5
           imagePullPolicy: IfNotPresent
           args:
             - --api.insecure
+            - --api.dashboard
             - --log.level=INFO
             - --log.filePath=/var/log/traefik/traefik.log
             - --accesslog
             - --accesslog.filePath=/var/log/traefik/access.log
             - --ping
             - --providers.kubernetescrd
-            - --entrypoints.web.address=:8008
+            - --providers.kubernetesingress
+            - --entryPoints.traefik.address=:8080
+            - --entrypoints.web.address=:8000
             - --entrypoints.web.forwardedheaders.insecure
-            # - --entrypoints.websecure.address=:4443
-            # - --entrypoints.tcpep.address=:8000
-            # - --entrypoints.udpep.address=:9000/udp
+            # - --entrypoints.websecure.address=:8443
+            # - --entrypoints.tcpep.address=:8888
+            # - --entrypoints.udpep.address=:8888/udp
             # - --certificatesresolvers.default.acme.tlschallenge
             # - --certificatesresolvers.default.acme.email=foo@you.com
             # - --certificatesresolvers.default.acme.storage=acme.json
@@ -46,68 +49,59 @@ spec:
             # # Once you get things working, you should remove that whole line altogether.
             # - --certificatesresolvers.default.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
           ports:
-            - name: web
-              containerPort: 8008
             - name: admin
               containerPort: 8080
+            - name: web
+              containerPort: 8000
             # - name: websecure
-            #   containerPort: 4443
+            #   containerPort: 8443
             # - name: tcpep
-            #   containerPort: 8000
+            #   containerPort: 8888
             # - name: udpep
-            #   containerPort: 9000
+            #   containerPort: 8888
           readinessProbe:
             httpGet:
               path: /ping
               port: 8080
-            initialDelaySeconds: 5
-            timeoutSeconds: 3
-            periodSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 1
           livenessProbe:
             httpGet:
               path: /ping
               port: 8080
-            initialDelaySeconds: 20
-            timeoutSeconds: 3
-            periodSeconds: 30
+            initialDelaySeconds: 10
+            timeoutSeconds: 2
             failureThreshold: 3
           resources:
             limits:
               cpu: 150m
-              memory: 400Mi
+              memory: 200Mi
             requests:
               cpu: 150m
-              memory: 400Mi
+              memory: 200Mi
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 65532
+            runAsNonRoot: true
+            runAsUser: 65532
           volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
             - name: container-log
               mountPath: /var/log/traefik
-        - name: node-exporter
-          image: prom/node-exporter:v0.18.1
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: metrics
-              containerPort: 9100
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 9100
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 9100
-          resources:
-            limits:
-              cpu: 30m
-              memory: 30Mi
-            requests:
-              cpu: 30m
-              memory: 30Mi
         - name: fluent-bit
-          image: fluent/fluent-bit:1.4
+          image: fluent/fluent-bit:1.8
           # image: grafana/fluent-bit-plugin-loki:1.5.0-amd64
           imagePullPolicy: IfNotPresent
           envFrom:
+            - secretRef:
+                name: aws-secret
             - configMapRef:
                 name: fluent-bit-config
           env:
@@ -119,6 +113,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          ports:
+            - name: http
+              containerPort: 2020
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
           resources:
             limits:
               cpu: 30m
@@ -139,5 +144,11 @@ spec:
         - name: fluent-bit-config
           configMap:
             name: fluent-bit-config
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
         - name: container-log
           emptyDir: {}
+      securityContext:
+        fsGroup: 65532
